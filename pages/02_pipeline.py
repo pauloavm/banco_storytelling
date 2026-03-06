@@ -41,21 +41,27 @@ def carregar_bronze():
 bronze_c, bronze_tx, bronze_m = carregar_bronze()
 
 # ── Diagrama textual do pipeline ─────────────────
-st.markdown(
+st.code(
     """
-📂 BRONZE (Dados Brutos)   
-    ├── d_customer.csv → bronze_customer 
-    ├── f_transactions.csv → bronze_transactions 
-    └── d_macro_economic.csv → bronze_macro_economic ↓ [Limpeza de tipos, validação, chaves] 
-🥈 SILVER (Dados Limpos) 
-    ├── silver_customers 
-    ├── silver_transactions 
-    └── silver_macro_economic ↓ [Joins, enriquecimento, modelagem estrela] 
-🏆 GOLD (Pronto para Análise) 
-    ├── d_date (dimensão) 
-    └── gold_f_transactions (tabela fato)
-            
-"""
+📂 BRONZE (Dados Brutos)
+├── d_customer.csv         → bronze_customer
+├── f_transactions.csv     → bronze_transactions
+└── d_macro_economic.csv   → bronze_macro_economic
+            ↓
+  [Limpeza de tipos, validação, chaves]
+            ↓
+🥈 SILVER (Dados Limpos)
+├── silver_customers
+├── silver_transactions
+└── silver_macro_economic
+            ↓
+  [Joins, enriquecimento, modelagem estrela]
+            ↓
+🏆 GOLD (Pronto para Análise)
+├── d_date                 (dimensão)
+└── gold_f_transactions    (tabela fato)
+    """,
+    language="text",
 )
 # ── Transforma e exibe ───────────────────────────
 col1, col2 = st.columns(2)
