@@ -2,14 +2,13 @@ import streamlit as st
 import pandas as pd
 import os
 
-st.set_page_config(page_title="Correlação Macro", page_icon="📈", layout="wide")
-st.title("📈 KPI 4 — Correlação com Indicadores Macroeconômicos")
+st.set_page_config(page_title="Correlação Macroeconômica", layout="wide")
+st.title("Estudo de Correlação: Contexto Macroeconômico vs. Movimentação Bancária")
 st.markdown(
     """
-Como SELIC e desemprego influenciaram o comportamento transacional dos clientes ao longo de 25 anos?
+Análise comparativa da influência de indicadores externos (SELIC e Desemprego) no comportamento transacional da base de clientes ao longo do tempo.
 
-> **Técnica aplicada:** Subplots com eixo X compartilhado (evita o eixo Y duplo — 
-> recomendação de Cole Knaflic no Capítulo 2 de *Storytelling com Dados*).
+> **Fundamentação Visual:** A utilização de subplots com eixo X compartilhado elimina a ambiguidade visual característica de gráficos com múltiplos eixos Y, alinhando-se às boas práticas de visualização executiva.
 """
 )
 
@@ -43,7 +42,7 @@ def carregar_gold():
 
 gold = carregar_gold()
 if gold is None:
-    st.error("❌ Execute a **Geração de Dados** primeiro.")
+    st.error("Falha de Dependência: Execute a geração de dados na página principal.")
     st.stop()
 
 from src.etl import kpi_correlacao_macro
@@ -52,14 +51,26 @@ from src.viz import plot_correlacao_macro
 df_macro = kpi_correlacao_macro(gold)
 
 # ── Métricas de correlação ───────────────────────
-col1, col2, col3 = st.columns(3)
+st.subheader("Análise do Coeficiente de Pearson (r)")
 
-# Cálculo matemático da correlação linear de Pearson
+with st.expander("Interpretação Estatística dos Coeficientes"):
+    st.markdown(
+        """
+        O Coeficiente de Correlação de Pearson mensura o grau da correlação linear entre duas variáveis, variando de -1 (correlação negativa perfeita) a 1 (correlação positiva perfeita).
+        
+        **Insights Econômicos Observáveis:**
+        - **Correlação Volume vs. SELIC:** Um índice fortemente negativo sugeriria que o aumento dos juros reduz a tomada de crédito e esfria a movimentação financeira no varejo. Já um índice positivo ou próximo de zero indica que a base transacional é resiliente ou guiada por fatores independentes da taxa básica de juros.
+        - **Correlação Volume vs. Desemprego:** Em cenários macroeconômicos normais, espera-se uma correlação negativa acentuada; o desemprego contrai a renda disponível, o que reduz substancialmente o consumo e, consequentemente, o volume financeiro transacionado pelas contas correntes.
+        """
+    )
+
+col1, col2 = st.columns(2)
+
 corr_selic = df_macro["volume_total"].corr(df_macro["selic"])
 corr_desemprego = df_macro["volume_total"].corr(df_macro["desemprego"])
 
-col1.metric("Correlação: Volume x SELIC", f"{corr_selic:.2f}")
-col2.metric("Correlação: Volume x Desemprego", f"{corr_desemprego:.2f}")
+col1.metric("Coeficiente de Correlação: Volume x SELIC", f"{corr_selic:.2f}")
+col2.metric("Coeficiente de Correlação: Volume x Desemprego", f"{corr_desemprego:.2f}")
 
 st.divider()
 
