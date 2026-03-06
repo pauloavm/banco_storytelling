@@ -1,14 +1,3 @@
-"""
-gerador.py
-----------
-Responsável por gerar os três datasets sintéticos do pipeline bancário.
-Encapsula toda a lógica de geração em funções independentes para
-permitir reuso nas páginas Streamlit.
-
-Filosofia: dados gerados UMA VEZ e salvos em /data.
-           A app lê os CSVs — nunca regenera em runtime.
-"""
-
 import pandas as pd
 import numpy as np
 from faker import Faker
@@ -16,188 +5,213 @@ from datetime import datetime, timedelta
 import random
 import os
 
-# ── Semente global para reprodutibilidade ──────────────────────────────────
-SEED = 42
-random.seed(SEED)
-np.random.seed(SEED)
 fake = Faker("pt_BR")
-Faker.seed(SEED)
-
-# ── Constantes de negócio ──────────────────────────────────────────────────
-N_CLIENTES       = 15_000
-DATA_INICIO      = datetime(2000, 1, 1)
-DATA_FIM         = datetime(2025, 12, 31)
-DATA_PIX         = datetime(2020, 11, 1)   # Lançamento oficial do PIX
-
-FAIXAS_RENDA = [
-    "Até R$2.000",
-    "R$2.001 a R$5.000",
-    "R$5.001 a R$10.000",
-    "Acima de R$10.000",
-]
-
-CANAIS_PRE_PIX  = ["Agência", "Caixa Eletrônico", "Internet Banking", "Mobile App"]
-CANAIS_POS_PIX  = ["Agência", "Caixa Eletrônico", "Internet Banking", "Mobile App", "PIX"]
-
-TIPOS_TRANSACAO = [
-    "Transferência", "Pagamento de Conta", "Saque",
-    "Depósito", "Investimento", "Empréstimo",
-]
-
-ESTADOS_BR = [
-    "SP", "RJ", "MG", "RS", "PR", "SC",
-    "BA", "GO", "PE", "CE", "DF", "AM",
-]
+np.random.seed(42)
+random.seed(42)
 
 
-# ── 1. Gerador de Clientes ─────────────────────────────────────────────────
-def gerar_clientes(n: int = N_CLIENTES) -> pd.DataFrame:
+# ─────────────────────────────────────────
+# GERADOR DE CLIENTES
+# ─────────────────────────────────────────
+def gerar_clientes(n: int = 15_000, path: str = "data/d_customer.csv") -> pd.DataFrame:
     """
-    Gera DataFrame de clientes fictícios com perfil demográfico e financeiro.
-
-    Campos gerados:
-    - customer_id     : identificador único (UUID simplificado)
-    - nome            : nome completo (Faker pt_BR)
-    - data_nascimento : entre 1950 e 2000
-    - cidade / estado : aleatório entre principais cidades BR
-    - data_abertura   : data de abertura da conta (2000-2023)
-    - faixa_renda     : faixa de renda mensal
-    - score_credito   : score entre 300 e 1000
+    Gera base sintética de clientes bancários.
+    Reproduz a lógica do gerador_clientes.py do projeto pauloavm/Bancario.
     """
+    estados = ["SP", "RJ", "MG", "RS", "PR", "SC", "BA", "CE", "PE", "GO", "AM", "PA"]
+    faixas_renda = ["Até R$2k", "R$2k-5k", "R$5k-10k", "R$10k-20k", "Acima R$20k"]
+
+    data_min = datetime(2000, 1, 1)
+    data_max = datetime(2025, 3, 1)
+    delta_dias = (data_max - data_min).days
+
     registros = []
-
-    for i in range(n):
-        data_nasc   = fake.date_of_birth(minimum_age=18, maximum_age=75)
-        data_aber   = fake.date_between(
-            start_date=DATA_INICIO.date(),
-            end_date=datetime(2023, 12, 31).date()
-        )
-        score       = int(np.clip(np.random.normal(650, 150), 300, 1000))
-        faixa       = np.random.choice(
-            FAIXAS_RENDA,
-            p=[0.35, 0.30, 0.20, 0.15]   # distribuição realista BR
+    for i in range(1, n + 1):
+        data_conta = data_min + timedelta(days=random.randint(0, delta_dias))
+        registros.append(
+            {
+                "customer_id": i,
+                "nome": fake.name(),
+                "idade": random.randint(18, 75),
+                "cidade": fake.city(),
+                "estado": random.choice(estados),
+                "data_abertura_conta": data_conta.strftime("%Y-%m-%d"),
+                "faixa_renda": random.choice(faixas_renda),
+                "score_de_credito": random.randint(300, 1000),
+            }
         )
 
-        registros.append({
-            "customer_id"    : f"CLI{i+1:06d}",
-            "nome"           : fake.name(),
-            "data_nascimento": data_nasc,
-            "cidade"         : fake.city(),
-            "estado"         : np.random.choice(ESTADOS_BR),
-            "data_abertura"  : data_aber,
-            "faixa_renda"    : faixa,
-            "score_credito"  : score,
-        })
-
-    return pd.DataFrame(registros)
+    df = pd.DataFrame(registros)
+    os.makedirs("data", exist_ok=True)
+    df.to_csv(path, index=False)
+    return df
 
 
-# ── 2. Gerador de Transações ───────────────────────────────────────────────
-def gerar_transacoes(df_clientes: pd.DataFrame) -> pd.DataFrame:
+# ─────────────────────────────────────────
+# COLETOR DE DADOS MACRO (com fallback sintético)
+# ─────────────────────────────────────────
+def coletar_macro(path: str = "data/d_macro_economic.csv") -> pd.DataFrame:
     """
-    Gera histórico de transações para cada cliente.
-
-    Regras de negócio simuladas:
-    - Cada cliente gera entre 5 e 200 transações ao longo da vida da conta
-    - PIX só aparece a partir de novembro/2020
-    - Probabilidade de canal digital aumenta com o tempo (tendência real)
-    - Valor das transações varia por tipo e faixa de renda
+    Tenta buscar dados reais do BACEN via biblioteca bcb.
+    Em caso de falha, gera dados sintéticos plausíveis para o Brasil (2000-2025).
     """
+    try:
+        from bcb import sgs
+
+        selic = sgs.get({"selic": 4189}, start="2000-01-01", end="2025-03-01")
+        ipca = sgs.get({"ipca": 433}, start="2000-01-01", end="2025-03-01")
+        desem = sgs.get({"desemprego": 24369}, start="2012-01-01", end="2025-03-01")
+
+        df = selic.join(ipca, how="outer").join(desem, how="outer")
+        df.index.name = "data"
+        df = df.reset_index()
+        df["anomes_id"] = df["data"].dt.to_period("M").astype(str).str.replace("-", "")
+
+    except Exception:
+        # FALLBACK: série sintética histórica plausível para o Brasil
+        datas = pd.date_range("2000-01-01", "2025-03-01", freq="MS")
+        n = len(datas)
+        np.random.seed(99)
+        # Selic: começou alta (~19%), foi caindo, subiu na pandemia, caiu e subiu novamente
+        selic_base = np.interp(
+            np.arange(n),
+            [0, 60, 120, 150, 180, 210, 240, 270, 300],
+            [19, 11, 13, 8, 6, 2, 13, 10, 10.5],
+        ) + np.random.normal(0, 0.3, n)
+
+        ipca_base = np.interp(
+            np.arange(n),
+            [0, 50, 100, 150, 200, 240, 270, 300],
+            [7, 5, 6, 4, 3, 10, 5, 4.5],
+        ) + np.random.normal(0, 0.2, n)
+
+        desem_base = np.interp(
+            np.arange(n), [0, 100, 170, 200, 230, 270, 300], [10, 5, 14, 11, 9, 8, 6.5]
+        ) + np.random.normal(0, 0.3, n)
+
+        df = pd.DataFrame(
+            {
+                "data": datas,
+                "selic": np.clip(selic_base, 1.5, 27),
+                "ipca": np.clip(ipca_base, 0.2, 12),
+                "desemprego": np.clip(desem_base, 4, 15),
+            }
+        )
+        df["anomes_id"] = df["data"].dt.to_period("M").astype(str).str.replace("-", "")
+
+    os.makedirs("data", exist_ok=True)
+    df.to_csv(path, index=False)
+    return df
+
+
+# ─────────────────────────────────────────
+# GERADOR DE TRANSAÇÕES
+# ─────────────────────────────────────────
+def gerar_transacoes(
+    df_clientes: pd.DataFrame, path: str = "data/f_transactions.csv"
+) -> pd.DataFrame:
+    """
+    Gera histórico de transações bancárias por cliente.
+    Simula a evolução digital: maior probabilidade de canais digitais
+    ao longo do tempo, e introdução do PIX em novembro/2020.
+    """
+    tipos_base = [
+        "Depósito",
+        "Saque",
+        "Transferência",
+        "Pagamento de Conta",
+        "Investimento",
+        "Empréstimo",
+    ]
+    tipos_com_pix = tipos_base + ["PIX"]
+
+    canais_por_ano = {
+        # ano: [Agência, Caixa Eletrônico, Internet Banking, Mobile App]
+        # pesos somam 1.0 — evolução digital ao longo do tempo
+        2000: [0.70, 0.25, 0.05, 0.00],
+        2005: [0.50, 0.30, 0.18, 0.02],
+        2010: [0.30, 0.28, 0.30, 0.12],
+        2015: [0.18, 0.18, 0.35, 0.29],
+        2020: [0.08, 0.10, 0.32, 0.50],
+        2025: [0.04, 0.06, 0.28, 0.62],
+    }
+    canais = ["Agência", "Caixa Eletrônico", "Internet Banking", "Mobile App"]
+
+    def get_pesos_canal(ano: int) -> list:
+        anos_ref = sorted(canais_por_ano.keys())
+        if ano <= anos_ref[0]:
+            return canais_por_ano[anos_ref[0]]
+        if ano >= anos_ref[-1]:
+            return canais_por_ano[anos_ref[-1]]
+        for i in range(len(anos_ref) - 1):
+            if anos_ref[i] <= ano < anos_ref[i + 1]:
+                a0, a1 = anos_ref[i], anos_ref[i + 1]
+                t = (ano - a0) / (a1 - a0)
+                p0 = np.array(canais_por_ano[a0])
+                p1 = np.array(canais_por_ano[a1])
+                pesos = p0 * (1 - t) + p1 * t
+                return (pesos / pesos.sum()).tolist()
+        return canais_por_ano[anos_ref[-1]]
+
     registros = []
+    tx_id = 1
+    data_fim = datetime(2025, 3, 31)
+    pix_inicio = datetime(2020, 11, 1)
 
     for _, cliente in df_clientes.iterrows():
-        data_aber    = pd.to_datetime(cliente["data_abertura"])
-        n_transacoes = random.randint(5, 200)
+        data_abertura = datetime.strptime(cliente["data_abertura_conta"], "%Y-%m-%d")
+        # Número de transações baseado na faixa de renda
+        n_tx_map = {
+            "Até R$2k": (30, 80),
+            "R$2k-5k": (60, 150),
+            "R$5k-10k": (100, 250),
+            "R$10k-20k": (150, 400),
+            "Acima R$20k": (200, 600),
+        }
+        n_min, n_max = n_tx_map.get(cliente["faixa_renda"], (50, 150))
+        n_tx = random.randint(n_min, n_max)
 
-        for _ in range(n_transacoes):
-            # Data aleatória entre abertura da conta e 2025
-            dias_ativos = (DATA_FIM - data_aber).days
-            if dias_ativos <= 0:
-                continue
+        delta = (data_fim - data_abertura).days
+        if delta <= 0:
+            continue
 
-            data_tx = data_aber + timedelta(days=random.randint(0, dias_ativos))
+        for _ in range(n_tx):
+            data_tx = data_abertura + timedelta(days=random.randint(0, delta))
+            ano_tx = data_tx.year
 
-            # Canal: lógica temporal (digital cresce com o tempo)
-            ano = data_tx.year
-            prob_digital = min(0.15 + (ano - 2000) * 0.035, 0.85)
+            # Tipos com PIX só após novembro/2020
+            tipos_disponiveis = tipos_com_pix if data_tx >= pix_inicio else tipos_base
+            tipo = random.choice(tipos_disponiveis)
 
-            if data_tx >= DATA_PIX:
-                canais  = CANAIS_POS_PIX
-                # PIX tem peso crescente após 2020
-                peso_pix = min((ano - 2020) * 0.08, 0.40)
-                pesos   = [
-                    (1 - prob_digital) * 0.5,          # Agência
-                    (1 - prob_digital) * 0.5,          # Caixa
-                    prob_digital * (1 - peso_pix) * 0.5,  # Internet
-                    prob_digital * (1 - peso_pix) * 0.5,  # Mobile
-                    peso_pix,                          # PIX
-                ]
-            else:
-                canais = CANAIS_PRE_PIX
-                pesos  = [
-                    (1 - prob_digital) * 0.5,
-                    (1 - prob_digital) * 0.5,
-                    prob_digital * 0.5,
-                    prob_digital * 0.5,
-                ]
-
-            # Normaliza pesos
-            pesos = np.array(pesos)
-            pesos = pesos / pesos.sum()
-
-            canal = np.random.choice(canais, p=pesos)
-            tipo  = np.random.choice(TIPOS_TRANSACAO)
+            # Canal baseado no ano (evolução digital)
+            pesos = get_pesos_canal(ano_tx)
+            canal = random.choices(canais, weights=pesos, k=1)[0]
 
             # Valor baseado na faixa de renda
-            multiplicador = {
-                "Até R$2.000"         : 1.0,
-                "R$2.001 a R$5.000"   : 2.5,
-                "R$5.001 a R$10.000"  : 5.0,
-                "Acima de R$10.000"   : 12.0,
-            }.get(cliente["faixa_renda"], 1.0)
+            valor_map = {
+                "Até R$2k": (10, 1_500),
+                "R$2k-5k": (20, 5_000),
+                "R$5k-10k": (50, 15_000),
+                "R$10k-20k": (100, 40_000),
+                "Acima R$20k": (200, 150_000),
+            }
+            v_min, v_max = valor_map.get(cliente["faixa_renda"], (50, 5_000))
+            valor = round(random.uniform(v_min, v_max), 2)
 
-            valor = round(
-                abs(np.random.lognormal(mean=5.5, sigma=1.2)) * multiplicador, 2
+            registros.append(
+                {
+                    "transaction_id": tx_id,
+                    "customer_id": int(cliente["customer_id"]),
+                    "data_transacao": data_tx.strftime("%Y-%m-%d"),
+                    "tipo_transacao": tipo,
+                    "canal": canal,
+                    "valor": valor,
+                    "anomes_id": data_tx.strftime("%Y%m"),
+                }
             )
+            tx_id += 1
 
-            registros.append({
-                "transaction_id" : f"TXN{len(registros)+1:010d}",
-                "customer_id"    : cliente["customer_id"],
-                "data_transacao" : data_tx.date(),
-                "tipo_transacao" : tipo,
-                "canal"          : canal,
-                "valor"          : valor,
-                "estado"         : cliente["estado"],
-            })
-
-    return pd.DataFrame(registros)
-
-
-# ── 3. Executor principal (gera e salva CSVs) ──────────────────────────────
-def gerar_e_salvar(output_dir: str = "data") -> dict:
-    """
-    Orquestra a geração de todos os datasets e salva em /data.
-
-    Retorna dict com os DataFrames gerados para uso imediato,
-    evitando releitura de disco quando chamado uma vez.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-
-    print("⏳ Gerando clientes...")
-    df_clientes = gerar_clientes()
-    df_clientes.to_csv(f"{output_dir}/d_customer.csv", index=False)
-    print(f"   ✅ {len(df_clientes):,} clientes gerados.")
-
-    print("⏳ Gerando transações (pode levar alguns minutos)...")
-    df_transacoes = gerar_transacoes(df_clientes)
-    df_transacoes.to_csv(f"{output_dir}/f_transactions.csv", index=False)
-    print(f"   ✅ {len(df_transacoes):,} transações geradas.")
-
-    return {
-        "clientes"   : df_clientes,
-        "transacoes" : df_transacoes,
-    }
-
-
-if __name__ == "__main__":
-    gerar_e_salvar()
+    df = pd.DataFrame(registros)
+    os.makedirs("data", exist_ok=True)
+    df.to_csv(path, index=False)
+    return df

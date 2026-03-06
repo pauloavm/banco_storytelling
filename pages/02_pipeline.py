@@ -1,129 +1,95 @@
-"""
-02_pipeline.py
---------------
-Página 2: Visualização do pipeline ETL (Bronze → Silver → Gold).
-Demonstra as transformações aplicadas em cada camada.
-"""
-
 import streamlit as st
 import pandas as pd
-import sys, os
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src.etl import (
-    bronze_customers,
-    bronze_transactions,
-    silver_customers,
-    silver_transactions,
-    gold_fact_transactions,
-)
+import os
 
 st.set_page_config(page_title="Pipeline ETL", page_icon="🔄", layout="wide")
-
 st.title("🔄 Pipeline ETL — Arquitetura Medallion")
+st.markdown("Visualize a transformação dos dados brutos **(Bronze → Silver → Gold)**.")
+
+if not all(
+    os.path.exists(p)
+    for p in [
+        "data/d_customer.csv",
+        "data/f_transactions.csv",
+        "data/d_macro_economic.csv",
+    ]
+):
+    st.error(
+        "❌ Dados não encontrados. Execute a página **1. Geração de Dados** primeiro."
+    )
+    st.stop()
+
+from src.etl import (
+    bronze_to_silver_customers,
+    bronze_to_silver_transactions,
+    bronze_to_silver_macro,
+    build_dim_date,
+    build_gold_transactions,
+)
+
+
+# ── Carrega Bronze ───────────────────────────────
+@st.cache_data
+def carregar_bronze():
+    return (
+        pd.read_csv("data/d_customer.csv"),
+        pd.read_csv("data/f_transactions.csv"),
+        pd.read_csv("data/d_macro_economic.csv"),
+    )
+
+
+bronze_c, bronze_tx, bronze_m = carregar_bronze()
+
+# ── Diagrama textual do pipeline ─────────────────
 st.markdown(
     """
-Visualize a progressão dos dados desde a camada **Bronze** (dados brutos)
-até a **Gold** (dados prontos para análise), simulando o mesmo pipeline
-implementado originalmente em **Databricks/Spark**.
+📂 BRONZE (Dados Brutos) ├── d_customer.csv → bronze_customer ├── f_transactions.csv → bronze_transactions └── d_macro_economic.csv → bronze_macro_economic ↓ [Limpeza de tipos, validação, chaves] 🥈 SILVER (Dados Limpos) ├── silver_customers ├── silver_transactions └── silver_macro_economic ↓ [Joins, enriquecimento, modelagem estrela] 🏆 GOLD (Pronto para Análise) ├── d_date (dimensão) └── gold_f_transactions (tabela fato)
+            
 """
 )
-st.markdown("---")
+# ── Transforma e exibe ───────────────────────────
+col1, col2 = st.columns(2)
 
-# ── Diagrama do pipeline ───────────────────────────────────────────────────
-st.markdown(
-    """
-┌─────────────┐ ┌─────────────┐ ┌─────────────────────┐ │ BRONZE │────▶│ SILVER │────▶│ GOLD │ │ │ │ │ │ │ │ CSV brutos │ │ Tipos OK │ │ Tabela Fato │ │ dtype=str │ │ Chaves OK │ │ (Joins completos) │ │ sem limpeza │ │ Nulos trat. │ │ Pronta para KPIs │ └─────────────┘ └─────────────┘ └─────────────────────┘
-            
-            """
-)
-
-# ── Tabs por camada ────────────────────────────────────────────────────────
-tab_b, tab_s, tab_g = st.tabs(["🟤 Bronze", "⚪ Silver", "🟡 Gold"])
-
-with tab_b:
-    st.subheader("🟤 Camada Bronze — Dados Brutos")
-    st.info(
-        "Dados lidos diretamente dos CSVs, sem qualquer transformação. "
-        "Todos os campos são strings."
+with col1:
+    st.subheader("🥈 Silver — Clientes")
+    silver_c = bronze_to_silver_customers(bronze_c)
+    st.dataframe(silver_c.head(5), use_container_width=True)
+    st.caption(
+        f"Tipos corrigidos. {len(silver_c):,} registros. "
+        f"Data mín: {silver_c['data_abertura_conta'].min().date()}"
     )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**bronze_customers**")
-        df = bronze_customers()
-        st.dataframe(df.head(5), use_container_width=True)
-        st.caption(f"Shape: {df.shape[0]:,} linhas × {df.shape[1]} colunas")
-    with col2:
-        st.markdown("**bronze_transactions**")
-        df = bronze_transactions()
-        st.dataframe(df.head(5), use_container_width=True)
-        st.caption(f"Shape: {df.shape[0]:,} linhas × {df.shape[1]} colunas")
+    st.subheader("🥈 Silver — Transações")
+    silver_tx = bronze_to_silver_transactions(bronze_tx)
+    st.dataframe(silver_tx.head(5), use_container_width=True)
+    st.caption(f"{len(silver_tx):,} transações. Chave anomes_id criada.")
 
-with tab_s:
-    st.subheader("⚪ Camada Silver — Dados Limpos")
-    st.success(
-        "Tipos corrigidos, chaves criadas (`anomes_id`), "
-        "flag digital adicionada, faixa de risco calculada."
-    )
+with col2:
+    st.subheader("🥈 Silver — Macroeconômico")
+    silver_m = bronze_to_silver_macro(bronze_m)
+    st.dataframe(silver_m.head(5), use_container_width=True)
+    st.caption(f"{len(silver_m):,} meses. SELIC, IPCA, Desemprego tipados.")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("**silver_customers** — novos campos")
-        df = silver_customers()
-        st.dataframe(df.head(5), use_container_width=True)
+    st.subheader("📅 Gold — Dimensão de Datas")
+    dim_date = build_dim_date()
+    st.dataframe(dim_date.head(5), use_container_width=True)
+    st.caption(f"{len(dim_date):,} datas de 2000 a 2025.")
 
-        st.markdown("**Transformações aplicadas:**")
-        st.markdown(
-            """
-        - `data_abertura` → `datetime64`
-        - `score_credito` → `int64`
-        - ➕ `faixa_risco` → derivada do score
-        """
-        )
+# ── Gold final ───────────────────────────────────
+st.divider()
+st.subheader("🏆 Gold — Tabela Fato: gold_f_transactions")
 
-    with col2:
-        st.markdown("**silver_transactions** — novos campos")
-        df = silver_transactions()
-        st.dataframe(df.head(5), use_container_width=True)
+with st.spinner("Construindo tabela Gold..."):
+    gold = build_gold_transactions(silver_tx, silver_c, silver_m)
 
-        st.markdown("**Transformações aplicadas:**")
-        st.markdown(
-            """
-        - `data_transacao` → `datetime64`
-        - `valor` → `float64`
-        - ➕ `anomes_id` → chave de join com macro
-        - ➕ `is_digital` → flag canal digital (0/1)
-        - ➕ `ano`, `mes` → granularidade temporal
-        """
-        )
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Registros", f"{len(gold):,}")
+col2.metric("Colunas", f"{gold.shape[1]}")
+col3.metric("Volume total", f"R$ {gold['valor'].sum()/1e9:.2f}B")
+col4.metric("Clientes únicos", f"{gold['customer_id'].nunique():,}")
 
-with tab_g:
-    st.subheader("🟡 Camada Gold — Tabela Fato Principal")
-    st.success(
-        "Tabela `gold_f_transactions`: todos os joins realizados. "
-        "Cada linha é uma transação enriquecida com dados de cliente e macroeconômicos."
-    )
+st.dataframe(gold.head(10), use_container_width=True)
 
-    with st.spinner("Construindo camada Gold (join completo)..."):
-        df_gold = gold_fact_transactions()
-
-    st.dataframe(df_gold.head(10), use_container_width=True)
-
-    col_m1, col_m2, col_m3 = st.columns(3)
-    col_m1.metric("📏 Total de Linhas", f"{len(df_gold):,}")
-    col_m2.metric("📐 Total de Colunas", f"{df_gold.shape[1]}")
-    col_m3.metric(
-        "💾 Tamanho (memória)", f"{df_gold.memory_usage(deep=True).sum() / 1e6:.1f} MB"
-    )
-
-    st.markdown("**Campos disponíveis na Gold:**")
-    col_info = pd.DataFrame(
-        {
-            "Campo": df_gold.columns,
-            "Tipo": df_gold.dtypes.astype(str).values,
-            "Nulos": df_gold.isnull().sum().values,
-            "Únicos": df_gold.nunique().values,
-        }
-    )
-    st.dataframe(col_info, use_container_width=True, hide_index=True)
+# Salvar em cache de sessão para outras páginas
+st.session_state["gold"] = gold
+st.success("✅ Tabela Gold pronta! Navegue para os KPIs.")

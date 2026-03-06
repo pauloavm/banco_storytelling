@@ -1,426 +1,351 @@
-"""
-viz.py
-------
-Funções de visualização seguindo os princípios de Storytelling com Dados
-(Cole Nussbaumer Knaflic / BrunoMeloSlv).
-
-Filosofia aplicada em CADA gráfico:
-  ✅ Título narrativo (o quê está acontecendo)
-  ✅ Subtítulo de contexto (por quê importa)
-  ✅ Cor como foco (cinza = ruído | cor vibrante = sinal)
-  ✅ Anotações em pontos críticos (eventos reais: PIX, crises)
-  ✅ Remoção de spines desnecessários (menos é mais)
-  ✅ Rodapé com fonte de dados
-"""
-
-import matplotlib
-
-matplotlib.use("Agg")  # ← Necessário no Streamlit para evitar thread error
 import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-import pandas as pd
+import matplotlib.ticker as mticker
 import numpy as np
+import pandas as pd
 
-
-# ── Identidade Visual ──────────────────────────────────────────────────────
+# ─── Identidade visual ───────────────────────────────
 CORES = {
-    "primaria": "#1A6FBF",  # azul bancário
-    "destaque": "#E63946",  # vermelho — evento crítico
-    "positivo": "#2DC653",  # verde — resultado positivo
-    "neutro": "#AAAAAA",  # cinza — séries secundárias
-    "fundo": "#F8F9FA",
-    "texto": "#1C1C1E",
-    "linha_ref": "#FFA500",  # laranja — linha de referência
+    "primaria": "#1F3A93",  # azul institucional
+    "destaque": "#E74C3C",  # vermelho para alertas
+    "digital": "#2ECC71",  # verde para digital
+    "fisico": "#95A5A6",  # cinza para físico
+    "neutro": "#ECF0F1",
+    "texto": "#2C3E50",
+    "fundo": "#FFFFFF",
 }
 
-FONTE = "DejaVu Sans"  # Fonte padrão do Matplotlib (sem dependência externa)
-
-# Estilo global
-plt.rcParams.update(
-    {
-        "font.family": FONTE,
-        "axes.spines.top": False,
-        "axes.spines.right": False,
-        "figure.facecolor": CORES["fundo"],
-        "axes.facecolor": CORES["fundo"],
-        "text.color": CORES["texto"],
-        "axes.labelcolor": CORES["texto"],
-        "xtick.color": CORES["texto"],
-        "ytick.color": CORES["texto"],
-    }
-)
+CANAIS_CORES = {
+    "Agência": "#95A5A6",
+    "Caixa Eletrônico": "#7F8C8D",
+    "Internet Banking": "#3498DB",
+    "Mobile App": "#2ECC71",
+}
 
 
-def _rodape(
-    ax, fonte: str = "Dados sintéticos gerados via Faker | Banco Central do Brasil"
-):
-    """Adiciona rodapé padronizado com fonte dos dados."""
-    ax.figure.text(
-        0.01, 0.01, f"Fonte: {fonte}", fontsize=7, color=CORES["neutro"], style="italic"
-    )
+def _limpar_eixos(ax, manter_x: bool = True, manter_y: bool = False):
+    """Remove ruído visual — técnica central do storytelling."""
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    if not manter_y:
+        ax.spines["left"].set_visible(False)
+        ax.yaxis.set_visible(False)
+    if not manter_x:
+        ax.spines["bottom"].set_visible(False)
 
 
-def _linha_evento(ax, x_val, label: str, cor: str = None):
-    """Marca evento relevante com linha vertical anotada."""
-    cor = cor or CORES["destaque"]
-    ax.axvline(x=x_val, color=cor, linestyle="--", linewidth=1.2, alpha=0.7)
-    ax.annotate(
-        label,
-        xy=(x_val, ax.get_ylim()[1] * 0.92),
-        fontsize=8,
-        color=cor,
-        rotation=90,
-        va="top",
-        ha="right",
-    )
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# KPI 1 — Adoção Digital
-# ══════════════════════════════════════════════════════════════════════════
-
-
-def plot_adocao_digital(df: pd.DataFrame) -> plt.Figure:
-    """
-    Gráfico de linha: % de transações digitais ao longo do tempo.
-
-    Storytelling:
-    - Linha cinza: série histórica completa
-    - Destaque verde: últimos 12 meses
-    - Linha vermelha: chegada do PIX (nov/2020)
-    - Anotação: valor atual (último ponto)
-    """
-    fig, ax = plt.subplots(figsize=(12, 5))
-
-    # ── Série completa (cinza = contexto) ─────────────────────────────────
-    ax.plot(
-        df["periodo"],
-        df["pct_digital"],
-        color=CORES["neutro"],
-        linewidth=1.5,
-        alpha=0.6,
-        zorder=1,
-    )
-
-    # ── Últimos 24 meses em destaque ──────────────────────────────────────
-    df_recente = df.tail(24)
-    ax.plot(
-        df_recente["periodo"],
-        df_recente["pct_digital"],
-        color=CORES["primaria"],
-        linewidth=2.5,
-        zorder=2,
-    )
-
-    # ── Scatter no último ponto ───────────────────────────────────────────
-    ultimo = df.iloc[-1]
-    ax.scatter(
-        ultimo["periodo"],
-        ultimo["pct_digital"],
-        color=CORES["primaria"],
-        s=80,
-        zorder=5,
-    )
-    ax.annotate(
-        f"{ultimo['pct_digital']:.1f}%",
-        xy=(ultimo["periodo"], ultimo["pct_digital"]),
-        xytext=(10, 5),
-        textcoords="offset points",
-        fontsize=10,
-        fontweight="bold",
-        color=CORES["primaria"],
-    )
-
-    # ── Evento: PIX ───────────────────────────────────────────────────────
-    data_pix = pd.Timestamp("2020-11-01")
-    _linha_evento(ax, data_pix, "Lançamento\ndo PIX", CORES["destaque"])
-
-    # ── Evento: Pandemia ──────────────────────────────────────────────────
-    data_pandemia = pd.Timestamp("2020-03-01")
-    _linha_evento(ax, data_pandemia, "COVID-19", CORES["linha_ref"])
-
-    # ── Títulos narrativos ────────────────────────────────────────────────
+def _titulo_subtitulo(ax, titulo: str, subtitulo: str):
+    """Título narrativo + subtítulo explicativo — padrão do storytelling."""
     ax.set_title(
-        "A digitalização bancária acelerou após o PIX",
-        fontsize=14,
-        fontweight="bold",
-        pad=15,
-        loc="left",
+        titulo, fontsize=14, fontweight="bold", color=CORES["texto"], pad=20, loc="left"
     )
     ax.text(
         0,
-        1.02,
-        "% de transações realizadas por canais digitais (Internet Banking, Mobile App, PIX) — 2000 a 2025",
+        1.03,
+        subtitulo,
         transform=ax.transAxes,
         fontsize=9,
-        color=CORES["neutro"],
+        color="#7F8C8D",
+        ha="left",
     )
 
-    ax.set_ylabel("% Transações Digitais", fontsize=9)
-    ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.0f}%"))
-    ax.spines["left"].set_visible(False)
-    ax.yaxis.set_ticks_position("none")
-    ax.grid(axis="y", linestyle="--", alpha=0.3)
 
-    _rodape(ax)
-    plt.tight_layout(rect=[0, 0.04, 1, 1])
+def _rodape(fig, fonte: str = "Fonte: Simulação sintética — Banco Fictício Brasileiro"):
+    fig.text(0.01, -0.01, fonte, fontsize=7, color="#95A5A6", ha="left")
+
+
+# ─────────────────────────────────────────────────────────
+# VIZ 1 — ADOÇÃO DIGITAL
+# ─────────────────────────────────────────────────────────
+def plot_adocao_digital(df: pd.DataFrame) -> plt.Figure:
+    """
+    Evolução da adoção digital ao longo do tempo.
+    Aplica técnicas do storytelling: anotação de evento (PIX 2020),
+    destaque no ponto máximo, linha vertical de evento, título narrativo.
+    """
+    fig, ax = plt.subplots(figsize=(12, 5), facecolor=CORES["fundo"])
+    ax.set_facecolor(CORES["fundo"])
+
+    x = np.arange(len(df))
+    y = df["pct_digital"].values
+
+    # Linha principal — cinza neutro (versão simples)
+    ax.plot(x, y, color=CORES["fisico"], linewidth=1.5, alpha=0.4, zorder=1)
+
+    # TÉCNICA STORYTELLING: destacar tendência com linha suavizada
+    from scipy.ndimage import uniform_filter1d
+
+    y_smooth = uniform_filter1d(y, size=6)
+    ax.plot(x, y_smooth, color=CORES["digital"], linewidth=2.5, zorder=2)
+
+    # TÉCNICA: Linha vertical para marcar evento (PIX)
+    pix_label = "2020-11"
+    if pix_label in df["ano_mes"].values:
+        idx_pix = df[df["ano_mes"] == pix_label].index[0]
+        idx_pix_x = (
+            df.index.get_loc(idx_pix)
+            if hasattr(df.index, "get_loc")
+            else df.reset_index().index[df.reset_index()["ano_mes"] == pix_label][0]
+        )
+        ax.axvline(
+            x=idx_pix_x,
+            color=CORES["destaque"],
+            linestyle="--",
+            linewidth=1.2,
+            alpha=0.8,
+        )
+        ax.annotate(
+            "Lançamento\ndo PIX",
+            xy=(idx_pix_x, y_smooth[idx_pix_x]),
+            xytext=(idx_pix_x + 3, y_smooth[idx_pix_x] + 8),
+            fontsize=8,
+            color=CORES["destaque"],
+            arrowprops=dict(arrowstyle="->", color=CORES["destaque"], lw=1.2),
+        )
+
+    # TÉCNICA: destacar ponto final (último mês)
+    ax.scatter([x[-1]], [y_smooth[-1]], color=CORES["digital"], s=60, zorder=5)
+    ax.annotate(
+        f"{y_smooth[-1]:.0f}%",
+        xy=(x[-1], y_smooth[-1]),
+        xytext=(x[-1] - 8, y_smooth[-1] + 5),
+        fontsize=9,
+        color=CORES["digital"],
+        fontweight="bold",
+    )
+
+    # Eixo X — mostrar apenas alguns anos
+    anos_exibir = df[df["ano_mes"].str.endswith("-01")]["ano_mes"].values
+    idx_exibir = [
+        df.reset_index(drop=True)
+        .index[df.reset_index(drop=True)["ano_mes"] == a]
+        .tolist()
+        for a in anos_exibir
+    ]
+    idx_flat = [i[0] for i in idx_exibir if i]
+    labels_flat = [a[:4] for a in anos_exibir]
+    ax.set_xticks(idx_flat)
+    ax.set_xticklabels(labels_flat, fontsize=8, color=CORES["texto"])
+
+    _limpar_eixos(ax, manter_x=True, manter_y=False)
+    _titulo_subtitulo(
+        ax,
+        "📱 A virada digital: de 5% para mais de 90% em 25 anos",
+        "Percentual de transações realizadas por canais digitais (Internet Banking + Mobile App) | Mensal",
+    )
+    _rodape(fig)
+    plt.tight_layout()
     return fig
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# KPI 2 — Volume por Canal
-# ══════════════════════════════════════════════════════════════════════════
-
-
-def plot_volume_canal(df: pd.DataFrame, ano_selecionado: int = None) -> plt.Figure:
+# ─────────────────────────────────────────────────────────
+# VIZ 2 — VOLUME POR CANAL (barras empilhadas com storytelling)
+# ─────────────────────────────────────────────────────────
+def plot_volume_canal(df: pd.DataFrame) -> plt.Figure:
     """
-    Gráfico de barras horizontais: volume financeiro por canal.
-
-    Storytelling:
-    - Canal com maior volume em destaque (azul)
-    - Demais em cinza
-    - Rótulo de valor ao final de cada barra
+    Volume financeiro por canal ao longo dos anos.
+    Barras empilhadas com identidade visual por canal.
     """
-    if ano_selecionado:
-        df = df[df["ano"] == ano_selecionado]
+    fig, ax = plt.subplots(figsize=(13, 5), facecolor=CORES["fundo"])
+    ax.set_facecolor(CORES["fundo"])
 
-    df_agg = (
-        df.groupby("canal")["volume_total"]
-        .sum()
-        .sort_values(ascending=True)
-        .reset_index()
+    canais = ["Agência", "Caixa Eletrônico", "Internet Banking", "Mobile App"]
+    pivot = df.pivot_table(
+        index="ano", columns="canal", values="volume_total", aggfunc="sum"
+    ).fillna(0)
+    pivot = pivot.reindex(columns=canais, fill_value=0)
+
+    anos = pivot.index.values
+    x = np.arange(len(anos))
+    bottom = np.zeros(len(anos))
+
+    bars_refs = {}
+    for canal in canais:
+        vals = pivot[canal].values / 1e6  # em Milhões
+        bars = ax.bar(
+            x,
+            vals,
+            bottom=bottom,
+            color=CANAIS_CORES[canal],
+            label=canal,
+            width=0.7,
+            alpha=0.92,
+        )
+        bars_refs[canal] = bars
+        bottom += vals
+
+    # TÉCNICA STORYTELLING: rótulo somente no topo da barra total
+    for i, total in enumerate(bottom):
+        if total > 0:
+            ax.text(
+                i,
+                total + 5,
+                f"R${total:.0f}M",
+                ha="center",
+                va="bottom",
+                fontsize=6.5,
+                color=CORES["texto"],
+            )
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(anos, rotation=45, fontsize=7.5)
+    ax.legend(loc="upper left", fontsize=8, frameon=False)
+
+    _limpar_eixos(ax, manter_x=True, manter_y=True)
+    ax.spines["left"].set_visible(True)
+    ax.yaxis.set_visible(True)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"R${v:.0f}M"))
+    ax.set_ylabel("Volume (R$ Milhões)", fontsize=9, color=CORES["texto"])
+
+    _titulo_subtitulo(
+        ax,
+        "💰 O dinheiro migrou para o digital: crescimento 20x em transações mobile",
+        "Volume financeiro total por canal de atendimento | Anual (em R$ Milhões)",
     )
+    _rodape(fig)
+    plt.tight_layout()
+    return fig
 
-    fig, ax = plt.subplots(figsize=(10, 5))
 
-    max_canal = df_agg["volume_total"].idxmax()
-    cores_barras = [
-        CORES["primaria"] if i == max_canal else CORES["neutro"] for i in df_agg.index
-    ]
+# ─────────────────────────────────────────────────────────
+# VIZ 3 — PERFIL DE RISCO (barras horizontais)
+# ─────────────────────────────────────────────────────────
+def plot_perfil_risco(df: pd.DataFrame) -> plt.Figure:
+    """
+    Distribuição de clientes por faixa de risco.
+    Barras horizontais — recomendação de Cole Knaflic para dados categóricos.
+    Destaque na categoria de maior atenção (Alto Risco).
+    """
+    fig, ax = plt.subplots(figsize=(9, 4), facecolor=CORES["fundo"])
+    ax.set_facecolor(CORES["fundo"])
 
-    bars = ax.barh(
-        df_agg["canal"],
-        df_agg["volume_total"],
-        color=cores_barras,
-        edgecolor="none",
-        height=0.6,
-    )
+    cores_risco = {
+        "Alto": CORES["destaque"],
+        "Médio": "#F39C12",
+        "Bom": "#3498DB",
+        "Excelente": CORES["digital"],
+    }
 
-    # ── Rótulos de valor ─────────────────────────────────────────────────
-    for bar, val in zip(bars, df_agg["volume_total"]):
+    # Ordem de baixo para cima no gráfico horizontal
+    df_plot = df.sort_values("faixa_risco", ascending=True)
+    y = np.arange(len(df_plot))
+
+    for i, row in enumerate(df_plot.itertuples()):
+        cor = cores_risco.get(row.faixa_risco, CORES["primaria"])
+        alpha = 1.0 if row.faixa_risco == "Alto" else 0.55
+
+        bar = ax.barh(y[i], row.pct, color=cor, alpha=alpha, height=0.55)
+
+        # TÉCNICA: rótulo dentro da barra
         ax.text(
-            bar.get_width() * 1.01,
-            bar.get_y() + bar.get_height() / 2,
-            f"R$ {val/1e9:.1f}B",
+            row.pct + 0.5,
+            y[i],
+            f"{row.pct}% ({row.n_clientes:,} clientes)",
             va="center",
             fontsize=9,
             color=CORES["texto"],
         )
 
-    titulo_ano = f" — {ano_selecionado}" if ano_selecionado else " (acumulado)"
-    ax.set_title(
-        f"PIX e Mobile concentram o maior volume financeiro{titulo_ano}",
-        fontsize=13,
-        fontweight="bold",
-        pad=12,
-        loc="left",
-    )
-    ax.text(
-        0,
-        1.02,
-        "Volume financeiro total transacionado por canal (R$ bilhões)",
-        transform=ax.transAxes,
-        fontsize=9,
-        color=CORES["neutro"],
-    )
+    ax.set_yticks(y)
+    ax.set_yticklabels(df_plot["faixa_risco"].values, fontsize=10)
+    ax.set_xlim(0, df_plot["pct"].max() + 18)
 
-    ax.spines["bottom"].set_visible(False)
-    ax.xaxis.set_visible(False)
-
-    _rodape(ax)
-    plt.tight_layout(rect=[0, 0.04, 1, 1])
-    return fig
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# KPI 3 — Perfil de Risco
-# ══════════════════════════════════════════════════════════════════════════
-
-
-def plot_perfil_risco(df: pd.DataFrame) -> plt.Figure:
-    """
-    Gráfico de barras verticais: distribuição de clientes por faixa de risco.
-
-    Storytelling:
-    - 'Excelente' e 'Bom' em verde/azul (positivo)
-    - 'Alto Risco' em vermelho (alerta)
-    - Rótulo de % sobre cada barra
-    """
-    ORDEM = ["Alto Risco", "Risco Médio", "Bom", "Excelente"]
-    COR_MAP = {
-        "Alto Risco": CORES["destaque"],
-        "Risco Médio": CORES["linha_ref"],
-        "Bom": CORES["neutro"],
-        "Excelente": CORES["positivo"],
-    }
-
-    df["faixa_risco"] = pd.Categorical(
-        df["faixa_risco"], categories=ORDEM, ordered=True
-    )
-    df = df.sort_values("faixa_risco")
-    df["pct"] = df["qtd_clientes"] / df["qtd_clientes"].sum() * 100
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-
-    bars = ax.bar(
-        df["faixa_risco"].astype(str),
-        df["qtd_clientes"],
-        color=[COR_MAP.get(str(c), CORES["neutro"]) for c in df["faixa_risco"]],
-        edgecolor="none",
-        width=0.6,
-    )
-
-    for bar, pct in zip(bars, df["pct"]):
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            bar.get_height() + 50,
-            f"{pct:.1f}%",
-            ha="center",
-            va="bottom",
-            fontsize=10,
-            fontweight="bold",
-            color=CORES["texto"],
+    # TÉCNICA STORYTELLING: anotação de alerta
+    alto = df_plot[df_plot["faixa_risco"] == "Alto"]
+    if not alto.empty:
+        ax.annotate(
+            "⚠ Requer atenção\nem política de crédito",
+            xy=(alto["pct"].values[0], 0),
+            xytext=(alto["pct"].values[0] + 8, 0.3),
+            fontsize=8,
+            color=CORES["destaque"],
+            arrowprops=dict(arrowstyle="->", color=CORES["destaque"]),
         )
 
-    ax.set_title(
-        "Mais de 60% da carteira tem perfil Bom ou Excelente",
-        fontsize=13,
-        fontweight="bold",
-        pad=12,
-        loc="left",
+    _limpar_eixos(ax, manter_x=False, manter_y=True)
+    _titulo_subtitulo(
+        ax,
+        "🎯 Perfil de crédito da base: oportunidade e risco em equilíbrio",
+        "Distribuição dos clientes por faixa de score de crédito | Base total",
     )
-    ax.text(
-        0,
-        1.02,
-        "Distribuição de clientes por faixa de score de crédito",
-        transform=ax.transAxes,
-        fontsize=9,
-        color=CORES["neutro"],
-    )
-
-    ax.set_ylabel("Número de Clientes", fontsize=9)
-    ax.spines["left"].set_visible(False)
-    ax.yaxis.set_ticks_position("none")
-    ax.grid(axis="y", linestyle="--", alpha=0.3)
-
-    _rodape(ax)
-    plt.tight_layout(rect=[0, 0.04, 1, 1])
+    _rodape(fig)
+    plt.tight_layout()
     return fig
 
 
-# ══════════════════════════════════════════════════════════════════════════
-# KPI 4 — Correlação Macro
-# ══════════════════════════════════════════════════════════════════════════
-
-
+# ─────────────────────────────────────────────────────────
+# VIZ 4 — CORRELAÇÃO MACROECONÔMICA (dois eixos narrativos)
+# ─────────────────────────────────────────────────────────
 def plot_correlacao_macro(df: pd.DataFrame) -> plt.Figure:
     """
-    Gráfico dual-axis: volume transacionado vs SELIC e Desemprego.
-
-    Storytelling:
-    - Eixo Y esquerdo: volume (azul)
-    - Eixo Y direito: SELIC (laranja) e Desemprego (vermelho tracejado)
-    - Destaque visual no período de alta SELIC (2015-2016 e 2022-2023)
+    Volume transacionado vs. SELIC e Desemprego.
+    Gráficos separados verticalmente (padrão recomendado vs. eixo y secundário).
+    Técnica: Evita eixo y duplo — usa subplots com eixo x compartilhado.
     """
-    df = df.dropna(subset=["selic", "desemprego"])
-
-    fig, ax1 = plt.subplots(figsize=(13, 5))
-    ax2 = ax1.twinx()
-
-    # ── Volume total ──────────────────────────────────────────────────────
-    ax1.fill_between(
-        df["periodo"], df["volume_total"], alpha=0.25, color=CORES["primaria"]
+    fig, (ax1, ax2, ax3) = plt.subplots(
+        3,
+        1,
+        figsize=(13, 9),
+        sharex=True,
+        facecolor=CORES["fundo"],
+        gridspec_kw={"height_ratios": [3, 2, 2]},
     )
-    ax1.plot(
-        df["periodo"],
-        df["volume_total"],
-        color=CORES["primaria"],
-        linewidth=2,
-        label="Volume Transacionado (R$)",
-    )
+    for ax in [ax1, ax2, ax3]:
+        ax.set_facecolor(CORES["fundo"])
 
-    # ── SELIC ─────────────────────────────────────────────────────────────
-    ax2.plot(
-        df["periodo"],
-        df["selic"],
-        color=CORES["linha_ref"],
-        linewidth=1.5,
-        linestyle="-",
-        label="SELIC (%)",
-        alpha=0.8,
-    )
+    x = np.arange(len(df))
 
-    # ── Desemprego ────────────────────────────────────────────────────────
-    ax2.plot(
-        df["periodo"],
-        df["desemprego"],
-        color=CORES["destaque"],
-        linewidth=1.5,
-        linestyle="--",
-        label="Desemprego (%)",
-        alpha=0.8,
-    )
-
-    # ── Períodos de destaque ──────────────────────────────────────────────
-    ax1.axvspan(
-        pd.Timestamp("2015-01-01"),
-        pd.Timestamp("2017-01-01"),
-        alpha=0.07,
-        color=CORES["destaque"],
-        label="Crise 2015-2016",
-    )
-    ax1.axvspan(
-        pd.Timestamp("2022-01-01"),
-        pd.Timestamp("2023-12-01"),
-        alpha=0.07,
-        color=CORES["linha_ref"],
-        label="Aperto monetário 2022",
-    )
-
-    # ── Títulos e legendas ────────────────────────────────────────────────
+    # ── Painel 1: Volume ──
+    ax1.fill_between(x, df["volume_total"] / 1e6, alpha=0.25, color=CORES["primaria"])
+    ax1.plot(x, df["volume_total"] / 1e6, color=CORES["primaria"], linewidth=1.8)
+    ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"R${v:.0f}M"))
+    ax1.set_ylabel("Volume (R$ M)", fontsize=8, color=CORES["texto"])
+    _limpar_eixos(ax1, manter_x=False, manter_y=True)
     ax1.set_title(
-        "SELIC elevada e desemprego alto coincidem com\nreduções no volume transacionado",
+        "📊 Macro vs. Comportamento Bancário: a SELIC e o desemprego moldaram o uso do banco",
         fontsize=13,
         fontweight="bold",
-        pad=12,
+        color=CORES["texto"],
+        pad=15,
         loc="left",
     )
     ax1.text(
         0,
         1.02,
-        "Volume mensal transacionado (R$) vs SELIC (%) e Taxa de Desemprego (%) — 2000 a 2025",
+        "Volume total transacionado, Taxa SELIC e Taxa de Desemprego | Mensal",
         transform=ax1.transAxes,
-        fontsize=9,
-        color=CORES["neutro"],
-    )
-
-    ax1.set_ylabel("Volume Transacionado (R$)", color=CORES["primaria"], fontsize=9)
-    ax2.set_ylabel("Taxa (%)", color=CORES["texto"], fontsize=9)
-
-    # Legenda unificada
-    handles1, labels1 = ax1.get_legend_handles_labels()
-    handles2, labels2 = ax2.get_legend_handles_labels()
-    ax1.legend(
-        handles1 + handles2,
-        labels1 + labels2,
-        loc="upper left",
         fontsize=8,
-        framealpha=0.5,
+        color="#7F8C8D",
     )
 
-    ax1.spines["top"].set_visible(False)
-    ax2.spines["top"].set_visible(False)
+    # ── Painel 2: SELIC ──
+    ax2.plot(x, df["selic"], color="#E67E22", linewidth=1.5)
+    ax2.fill_between(x, df["selic"], alpha=0.15, color="#E67E22")
+    ax2.set_ylabel("SELIC (%)", fontsize=8, color="#E67E22")
+    ax2.yaxis.label.set_color("#E67E22")
+    ax2.tick_params(axis="y", colors="#E67E22")
+    _limpar_eixos(ax2, manter_x=False, manter_y=True)
 
-    _rodape(ax1)
-    plt.tight_layout(rect=[0, 0.04, 1, 1])
+    # ── Painel 3: Desemprego ──
+    ax3.plot(x, df["desemprego"], color=CORES["destaque"], linewidth=1.5)
+    ax3.fill_between(x, df["desemprego"], alpha=0.15, color=CORES["destaque"])
+    ax3.set_ylabel("Desemprego (%)", fontsize=8, color=CORES["destaque"])
+    ax3.yaxis.label.set_color(CORES["destaque"])
+    ax3.tick_params(axis="y", colors=CORES["destaque"])
+    _limpar_eixos(ax3, manter_x=True, manter_y=True)
+
+    # Eixo X compartilhado
+    anos_mostrar = df[df["ano_mes"].str.endswith("-01")]["ano_mes"].values
+    idx_exibir = [
+        df.reset_index(drop=True)
+        .index[df.reset_index(drop=True)["ano_mes"] == a]
+        .tolist()
+        for a in anos_mostrar
+    ]
+    idx_flat = [i[0] for i in idx_exibir if i]
+    labels_flat = [a[:4] for a in anos_mostrar]
+    ax3.set_xticks(idx_flat)
+    ax3.set_xticklabels(labels_flat, fontsize=8, rotation=45)
+
+    _rodape(fig)
+    plt.tight_layout(h_pad=0.5)
     return fig
