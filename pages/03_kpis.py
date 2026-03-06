@@ -73,7 +73,7 @@ delta = df_digital["pct_digital"].iloc[-1] - df_digital["pct_digital"].iloc[0]
 col3.metric("Crescimento", f"+{delta:.1f} p.p.", delta_color="normal")
 
 fig1 = plot_adocao_digital(df_digital)
-st.pyplot(fig1, use_container_width=True)
+st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
 
 # ──────────────────────────────────────────────────
 # KPI 2 — Volume por Canal
@@ -103,7 +103,7 @@ df_canal = kpi_volume_por_canal(gold)
 col1, col2 = st.columns([2, 1])
 with col1:
     fig2 = plot_volume_canal(df_canal)
-    st.pyplot(fig2, use_container_width=True)
+    st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
 with col2:
     st.markdown("**Volume por Canal (Total Geral)**")
     resumo = (
@@ -145,7 +145,7 @@ df_risco = kpi_perfil_risco(gold)
 col1, col2 = st.columns([3, 2])
 with col1:
     fig3 = plot_perfil_risco(df_risco)
-    st.pyplot(fig3, use_container_width=True)
+    st.plotly_chart(fig3, use_container_width=True, config={"displayModeBar": False})
 with col2:
     st.markdown("**Distribuição Detalhada**")
     st.dataframe(
