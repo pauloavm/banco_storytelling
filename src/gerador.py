@@ -144,7 +144,7 @@ def coletar_macro(path: str = "data/d_macro_economic.csv") -> pd.DataFrame:
         dados_macro = sgs.get(
             {"selic": 4189, "ipca": 433, "desemprego": 24369},
             start="2000-01-01",
-            end="2025-12-31",
+            end="2026-02-28",
         )
 
         df = pd.DataFrame(dados_macro).reset_index()
