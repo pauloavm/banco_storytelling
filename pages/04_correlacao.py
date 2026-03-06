@@ -53,4 +53,16 @@ df_macro = kpi_correlacao_macro(gold)
 
 # ── Métricas de correlação ───────────────────────
 col1, col2, col3 = st.columns(3)
-corr_selic = df
+
+# Correção: Cálculo matemático da correlação linear de Pearson
+corr_selic = df_macro["volume_total"].corr(df_macro["selic"])
+corr_desemprego = df_macro["volume_total"].corr(df_macro["desemprego"])
+
+col1.metric("Correlação: Volume x SELIC", f"{corr_selic:.2f}")
+col2.metric("Correlação: Volume x Desemprego", f"{corr_desemprego:.2f}")
+
+st.divider()
+
+# ── Renderização do Gráfico ──────────────────────
+fig4 = plot_correlacao_macro(df_macro)
+st.pyplot(fig4, use_container_width=True)
