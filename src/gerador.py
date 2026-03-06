@@ -18,7 +18,7 @@ random.seed(42)
 def obter_cidades_ibge() -> dict:
     """
     Consome a API do IBGE e retorna um dicionário mapeando siglas de UF
-    para listas de nomes de municípios.
+    para listas de nomes de municípios. Trata dados ausentes.
     """
     url = "https://servicodados.ibge.gov.br/api/v1/localidades/municipios"
     try:
@@ -28,12 +28,23 @@ def obter_cidades_ibge() -> dict:
 
         cidades_uf = {}
         for municipio in dados:
-            uf = municipio["microrregiao"]["mesorregiao"]["UF"]["sigla"]
-            nome = municipio["nome"]
-            if uf not in cidades_uf:
-                cidades_uf[uf] = []
-            cidades_uf[uf].append(nome)
+            try:
+                # Extração com tratamento para registros sem microrregião (ex: DF)
+                uf = municipio["microrregiao"]["mesorregiao"]["UF"]["sigla"]
+                nome = municipio["nome"]
+
+                if uf not in cidades_uf:
+                    cidades_uf[uf] = []
+                cidades_uf[uf].append(nome)
+            except (KeyError, TypeError):
+                # Ignora o município específico e continua a iteração
+                continue
+
+        if not cidades_uf:
+            raise ValueError("O mapeamento retornou um dicionário vazio.")
+
         return cidades_uf
+
     except Exception as e:
         print(f"Erro ao acessar API do IBGE: {e}. Utilizando dados de fallback.")
         # Fallback de segurança em caso de falha de rede
