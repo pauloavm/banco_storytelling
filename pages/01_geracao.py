@@ -1,71 +1,75 @@
 import streamlit as st
 import os
+import pandas as pd
 
 st.set_page_config(page_title="Geração de Dados", page_icon="⚙️", layout="wide")
 st.title("⚙️ Geração de Dados Sintéticos")
 st.markdown("Cria a camada **Bronze** — dados brutos simulados.")
 
-# ── Parâmetros ──────────────────────────────────
-with st.expander("⚙️ Parâmetros de Geração", expanded=True):
-    col1, col2 = st.columns(2)
-    with col1:
-        n_clientes = st.slider("Número de clientes", 1_000, 15_000, 5_000, 1_000)
-        st.caption(
-            "⚡ Mais clientes = mais tempo de geração. 5.000 é um bom equilíbrio."
-        )
-    with col2:
-        forcar_regenerar = st.checkbox(
-            "Forçar regeneração (ignorar cache)", value=False
-        )
+# Detecta se está rodando localmente (Windows = 'nt') ou na Nuvem (Linux = 'posix')
+IS_LOCAL = os.name == "nt"
 
-# ── Botão de geração ─────────────────────────────
-if st.button("🚀 Gerar Dados", type="primary", use_container_width=True):
-    from src.gerador import gerar_clientes, coletar_macro, gerar_transacoes
+if IS_LOCAL:
+    # ── Parâmetros Locais ──────────────────────────────────
+    with st.expander("⚙️ Parâmetros de Geração (Ambiente Local)", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            n_clientes = st.slider("Número de clientes", 1_000, 15_000, 5_000, 1_000)
+            st.caption(
+                "⚡ Mais clientes = mais tempo de geração. 5.000 é um bom equilíbrio."
+            )
+        with col2:
+            forcar_regenerar = st.checkbox(
+                "Forçar regeneração (ignorar cache)", value=False
+            )
 
-    # Clientes
-    if not os.path.exists("data/d_customer.csv") or forcar_regenerar:
-        with st.spinner("Gerando clientes..."):
-            df_clientes = gerar_clientes(n=n_clientes)
-        st.success(f"✅ {len(df_clientes):,} clientes gerados.")
-    else:
-        import pandas as pd
+    # ── Botão de geração ─────────────────────────────
+    if st.button("🚀 Gerar Dados", type="primary", use_container_width=True):
+        from src.gerador import gerar_clientes, coletar_macro, gerar_transacoes
 
-        df_clientes = pd.read_csv("data/d_customer.csv")
-        st.info(
-            f"ℹ️ Clientes já existentes carregados ({len(df_clientes):,} registros)."
-        )
+        # Clientes
+        if not os.path.exists("data/d_customer.csv") or forcar_regenerar:
+            with st.spinner("Gerando clientes..."):
+                df_clientes = gerar_clientes(n=n_clientes)
+            st.success(f"✅ {len(df_clientes):,} clientes gerados.")
+        else:
+            df_clientes = pd.read_csv("data/d_customer.csv")
+            st.info(
+                f"ℹ️ Clientes já existentes carregados ({len(df_clientes):,} registros)."
+            )
 
-    # Macro
-    if not os.path.exists("data/d_macro_economic.csv") or forcar_regenerar:
-        with st.spinner("Coletando dados macroeconômicos..."):
-            df_macro = coletar_macro()
-        st.success(f"✅ {len(df_macro):,} meses de dados macro.")
-    else:
-        import pandas as pd
+        # Macro
+        if not os.path.exists("data/d_macro_economic.csv") or forcar_regenerar:
+            with st.spinner("Coletando dados macroeconômicos..."):
+                df_macro = coletar_macro()
+            st.success(f"✅ {len(df_macro):,} meses de dados macro.")
+        else:
+            df_macro = pd.read_csv("data/d_macro_economic.csv")
+            st.info(f"ℹ️ Dados macro já existentes ({len(df_macro):,} meses).")
 
-        df_macro = pd.read_csv("data/d_macro_economic.csv")
-        st.info(f"ℹ️ Dados macro já existentes ({len(df_macro):,} meses).")
+        # Transações
+        if not os.path.exists("data/f_transactions.csv") or forcar_regenerar:
+            with st.spinner(
+                f"Gerando transações para {len(df_clientes):,} clientes..."
+            ):
+                df_tx = gerar_transacoes(df_clientes)
+            st.success(f"✅ {len(df_tx):,} transações geradas.")
+        else:
+            df_tx = pd.read_csv("data/f_transactions.csv")
+            st.info(f"ℹ️ Transações já existentes ({len(df_tx):,} registros).")
 
-    # Transações
-    if not os.path.exists("data/f_transactions.csv") or forcar_regenerar:
-        with st.spinner(
-            f"Gerando transações para {len(df_clientes):,} clientes... (pode levar alguns minutos)"
-        ):
-            df_tx = gerar_transacoes(df_clientes)
-        st.success(f"✅ {len(df_tx):,} transações geradas.")
-    else:
-        import pandas as pd
-
-        df_tx = pd.read_csv("data/f_transactions.csv")
-        st.info(f"ℹ️ Transações já existentes ({len(df_tx):,} registros).")
-
-    st.balloons()
+        st.balloons()
+else:
+    # ── Ambiente em Nuvem ─────────────────────────────
+    st.info(
+        "☁️ **Ambiente em Nuvem Detectado:** A rotina de geração de dados dinâmicos está "
+        "desabilitada para preservar os limites de memória do servidor. O painel utilizará "
+        "os dados estáticos pré-gerados."
+    )
 
 # ── Preview dos dados ────────────────────────────
 st.divider()
 st.subheader("👁️ Preview dos Dados Brutos (Bronze)")
-
-import pandas as pd
 
 tab1, tab2, tab3 = st.tabs(["👤 Clientes", "💳 Transações", "📈 Macro"])
 
@@ -78,7 +82,9 @@ with tab1:
         col3.metric("Idade média", f"{df['idade'].mean():.1f} anos")
         st.dataframe(df.head(10), use_container_width=True)
     else:
-        st.warning("Dados ainda não gerados. Clique em 'Gerar Dados'.")
+        st.warning(
+            "Dados não encontrados. Verifique o commit dos arquivos no repositório."
+        )
 
 with tab2:
     if os.path.exists("data/f_transactions.csv"):
@@ -89,7 +95,7 @@ with tab2:
         col3.metric("Volume total", f"R$ {df['valor'].sum()/1e9:.2f}B")
         st.dataframe(df.head(10), use_container_width=True)
     else:
-        st.warning("Dados ainda não gerados.")
+        st.warning("Dados não encontrados.")
 
 with tab3:
     if os.path.exists("data/d_macro_economic.csv"):
@@ -100,4 +106,4 @@ with tab3:
         col3.metric("Desemprego médio", f"{df['desemprego'].mean():.1f}%")
         st.dataframe(df.head(10), use_container_width=True)
     else:
-        st.warning("Dados ainda não gerados.")
+        st.warning("Dados não encontrados.")
