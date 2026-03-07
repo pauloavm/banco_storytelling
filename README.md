@@ -1,6 +1,4 @@
 
-
-```markdown
 # Banco Fictício: Pipeline Analítico e Storytelling com Dados
 
 ## Visão Geral
