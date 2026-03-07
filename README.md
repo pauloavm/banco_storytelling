@@ -1,12 +1,4 @@
-Olá, Paulo.
 
-A inclusão da licença MIT é uma excelente decisão. Ela permite que outros profissionais e empresas utilizem, copiem e modifiquem o seu código livremente, desde que mantenham os créditos originais, o que ajuda muito na visibilidade do seu portfólio.
-
-Para aplicar a licença corretamente no GitHub, você precisará atualizar o seu arquivo `README.md` e criar um novo arquivo chamado `LICENSE` na raiz do seu repositório.
-
-### 1. Atualização do `README.md`
-
-Adicionei a seção **"Licença"** ao final do documento. Segue o código completo e atualizado do seu `README.md`:
 
 ```markdown
 # Banco Fictício: Pipeline Analítico e Storytelling com Dados
